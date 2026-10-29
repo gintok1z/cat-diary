@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { FeedStatus, InventoryItem } from '../../types/database.types'
 import {
     computeInventoryStatus,
@@ -37,6 +37,13 @@ export function FeedLogForm({
     const [inputMode, setInputMode] = useState<'unit' | 'grams'>('grams')
     const [amountValue, setAmountValue] = useState('')
     const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        if (selectedItem && !inventory.some((item) => item.id === selectedItem.id)) {
+            setSelectedItem(null)
+            setAmountValue('')
+        }
+    }, [inventory, selectedItem])
 
     const text = useMemo(() => language === 'zh'
         ? {

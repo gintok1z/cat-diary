@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { supabase } from '../../lib/supabase'
@@ -11,6 +11,7 @@ import { getErrorMessage } from '../../lib/errorMessage'
 import { lightHaptic } from '../../lib/haptics'
 import { compressImage } from '../../lib/imageCompress'
 import { sendDiaryNotification, sendHealthNotification } from '../../lib/pushServer'
+import { useRealtimeSubscription } from '../../lib/realtime'
 import { INVENTORY_ICONS, DIARY_TAGS, getDiaryTagLabel } from '../../lib/constants'
 import { useI18n } from '../../lib/i18n'
 import { format } from 'date-fns'
@@ -33,7 +34,7 @@ export function QuickActionModals() {
 
     // ─── Feed state ──────────────────────────────────
     const [feedInventory, setFeedInventory] = useState<InventoryItem[]>([])
-    const [feedDataLoaded, setFeedDataLoaded] = useState(false)
+    const [inventoryLoading, setInventoryLoading] = useState(false)
 
     // ─── Diary state ─────────────────────────────────
     const [diaryText, setDiaryText] = useState('')
@@ -67,7 +68,6 @@ export function QuickActionModals() {
     const [expiryInHours, setExpiryInHours] = useState('')
     const [expirySaving, setExpirySaving] = useState(false)
     const [expiryInventory, setExpiryInventory] = useState<InventoryItem[]>([])
-    const [expiryInventoryLoaded, setExpiryInventoryLoaded] = useState(false)
 
     const healthTypeLabels = useMemo<Record<HealthFormType, { icon: string; label: string }>>(() => ({
         vaccine: { icon: '💉', label: l('疫苗', 'Vaccine') },
@@ -82,21 +82,32 @@ export function QuickActionModals() {
         return format(new Date(Date.now() + h * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm')
     }, [expiryInHours])
 
-    // ─── Load feed data on demand ────────────────────
-    const loadFeedData = useCallback(async () => {
-        if (!catId || feedDataLoaded) return
-        const { data } = await supabase.from('inventory').select('*').eq('cat_id', catId).order('item_name', { ascending: true })
-        if (data) setFeedInventory(data)
-        setFeedDataLoaded(true)
-    }, [catId, feedDataLoaded])
+    // ─── Load inventory on demand ────────────────────
+    const loadInventoryData = useCallback(async () => {
+        if (!catId) return
+        setInventoryLoading(true)
+        try {
+            const { data } = await supabase.from('inventory').select('*').eq('cat_id', catId).order('item_name', { ascending: true })
+            if (data) {
+                setFeedInventory(data)
+                setExpiryInventory(data)
+            }
+        } finally {
+            setInventoryLoading(false)
+        }
+    }, [catId])
 
-    // ─── Load expiry inventory on demand ────────────
-    const loadExpiryData = useCallback(async () => {
-        if (!catId || expiryInventoryLoaded) return
-        const { data } = await supabase.from('inventory').select('*').eq('cat_id', catId).order('item_name', { ascending: true })
-        if (data) setExpiryInventory(data)
-        setExpiryInventoryLoaded(true)
-    }, [catId, expiryInventoryLoaded])
+    useEffect(() => {
+        if (catId && (activeAction === 'feed' || activeAction === 'expiry')) {
+            void loadInventoryData()
+        }
+    }, [catId, activeAction, loadInventoryData])
+
+    useRealtimeSubscription('inventory', () => {
+        if (catId) {
+            void loadInventoryData()
+        }
+    })
 
     // ─── Reset functions ─────────────────────────────
     const resetDiary = () => {
@@ -114,7 +125,7 @@ export function QuickActionModals() {
         setInvAlertThreshold('')
     }
     const resetHealth = () => { setHealthName(''); setHealthDate(format(new Date(), 'yyyy-MM-dd')); setHealthNextDue(''); setHealthMedicalPreset('vomit'); setHealthNotes(''); setHealthType('vaccine') }
-    const resetExpiry = () => { setExpiryItemName(''); setExpiryInHours(''); setExpiryInventory([]); setExpiryInventoryLoaded(false) }
+    const resetExpiry = () => { setExpiryItemName(''); setExpiryInHours('') }
 
     const closeAndReset = (resetFn: () => void) => {
         closeAction()
@@ -210,6 +221,7 @@ export function QuickActionModals() {
             closeAndReset(resetInv)
             lightHaptic()
             pushToast('success', l('库存已更新', 'Inventory updated'))
+            void loadInventoryData()
         } catch (err) {
             pushToast('error', getErrorMessage(err, l('库存保存失败，请稍后重试', 'Failed to save inventory, please try again later')))
         } finally {
@@ -281,16 +293,6 @@ export function QuickActionModals() {
     // This is triggered differently — not via modal but from QuickActions button on dashboard.
     // We don't handle miss here since it's a one-click action in QuickActions.
 
-    // Load feed data when feed modal opens
-    if (activeAction === 'feed' && !feedDataLoaded) {
-        loadFeedData()
-    }
-
-    // Load inventory when expiry modal opens
-    if (activeAction === 'expiry' && !expiryInventoryLoaded) {
-        loadExpiryData()
-    }
-
     return (
         <>
             {/* ── Poop Modal ── */}
@@ -310,7 +312,7 @@ export function QuickActionModals() {
                     catId={cat?.id || ''}
                     userId={user?.id || ''}
                     inventory={feedInventory}
-                    onSaveSuccess={() => { closeAction(); lightHaptic() }}
+                    onSaveSuccess={() => { void loadInventoryData(); closeAction(); lightHaptic() }}
                     onCancel={closeAction}
                 />
             </Modal>
@@ -695,7 +697,7 @@ export function QuickActionModals() {
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-sm text-muted">{expiryInventoryLoaded ? l('暂无库存物品，请先添加', 'No inventory items yet. Add some first.') : l('加载中...', 'Loading...')}</p>
+                            <p className="text-sm text-muted">{inventoryLoading ? l('加载中...', 'Loading...') : l('暂无库存物品，请先添加', 'No inventory items yet. Add some first.')}</p>
                         )}
                     </div>
 

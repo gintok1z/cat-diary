@@ -249,9 +249,9 @@ export function useDashboardData(catId: string | null, catLoading: boolean) {
         }
     }, [catId])
 
-    useRealtimeSubscription('feed_status', () => { reloadFeeds() }, catId ? `cat_id=eq.${catId}` : undefined)
+    useRealtimeSubscription('feed_status', () => { reloadFeeds() })
     useRealtimeSubscription('mood_logs', () => { reloadMoods() }, catId ? `cat_id=eq.${catId}` : undefined)
-    useRealtimeSubscription('inventory', () => { reloadInventory() }, catId ? `cat_id=eq.${catId}` : undefined)
+    useRealtimeSubscription('inventory', () => { reloadInventory() })
 
     // Derived computations
     const lowInventory = useMemo(

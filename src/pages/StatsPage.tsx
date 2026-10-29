@@ -282,7 +282,7 @@ export function StatsPage() {
         const { data } = await supabase.from('feed_status').select('*').eq('cat_id', catId).order('fed_at', { ascending: false }).limit(400)
         if (data) setFeeds(data)
     }, [catId])
-    useRealtimeSubscription('feed_status', () => { reloadFeeds() }, catId ? `cat_id=eq.${catId}` : undefined)
+    useRealtimeSubscription('feed_status', () => { reloadFeeds() })
 
     // ─── Realtime subscription for inventory ───────
     const reloadInventory = useCallback(async () => {
@@ -290,7 +290,7 @@ export function StatsPage() {
         const { data } = await supabase.from('inventory').select('*').eq('cat_id', catId).order('item_name', { ascending: true })
         if (data) setInventory(data)
     }, [catId])
-    useRealtimeSubscription('inventory', () => { reloadInventory() }, catId ? `cat_id=eq.${catId}` : undefined)
+    useRealtimeSubscription('inventory', () => { reloadInventory() })
 
     // ─── Chart date range cutoffs (memoized) ───────
     const chartStartTs = useMemo(() => new Date(`${chartStartDate}T00:00:00`).getTime(), [chartStartDate])
